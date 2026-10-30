@@ -1,0 +1,235 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Company Policy Assistant | SDU</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f3f6fb;
+  color: #17243b;
+}
+header {
+  background: #142b50;
+  color: white;
+  padding: 38px 20px;
+  text-align: center;
+}
+header h1 { margin: 0 0 10px; }
+header p { color: #d5e3f7; }
+main {
+  max-width: 1150px;
+  margin: 30px auto;
+  padding: 0 18px;
+}
+.panel, .card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 3px 12px #17243b12;
+}
+textarea {
+  width: 100%;
+  padding: 14px;
+  font: inherit;
+  border: 1px solid #b9c7da;
+  border-radius: 8px;
+  resize: vertical;
+}
+button {
+  background: #1762bd;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 13px 22px;
+  margin-top: 14px;
+  font-size: 16px;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.6; cursor: wait; }
+#status { margin-top: 15px; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-top: 24px;
+}
+.card { overflow-wrap: anywhere; }
+.card h2 { font-size: 19px; margin-top: 0; }
+.card p { line-height: 1.6; }
+.metric {
+  background: #edf3fb;
+  padding: 10px;
+  border-radius: 7px;
+  margin-top: 10px;
+}
+.error { color: #b42318; }
+.success { color: #167347; }
+footer {
+  text-align: center;
+  padding: 30px;
+  color: #60718a;
+}
+@media (max-width: 800px) {
+  .grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Company Policy Assistant</h1>
+  <p>AI in Accounting and Business | SDU</p>
+  <p>Comparing Rules-Based Search and Two LLM Approaches</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Ask a Company Policy Question</h2>
+    <p>Compare three approaches using the same question.</p>
+
+    <textarea id="question" rows="3"
+      placeholder="Enter your policy question...">How often do employees receive performance reviews?</textarea>
+
+    <button id="compareButton" onclick="compareMethods()">
+      Compare All Three Methods
+    </button>
+
+    <p id="status" role="status"></p>
+  </section>
+
+  <section class="grid" id="results" aria-live="polite"></section>
+
+  <section class="panel" style="margin-top:24px">
+    <h2>How the Methods Work</h2>
+    <p><strong>Rules-based search:</strong>
+    Matches keywords against company policies without an LLM.</p>
+    <p><strong>LLM without vector index:</strong>
+    Sends the policy database and question to Gemini.</p>
+    <p><strong>LLM with vector index:</strong>
+    Uses TF-IDF retrieval to select relevant policies before asking Gemini.</p>
+    <p><strong>Reliability note:</strong>
+    A generated answer may be unsupported or incorrect.
+    Verify answers against the original policy database.
+    API errors and response times can vary between requests.</p>
+  </section>
+</main>
+
+<footer>
+  SDU | AI in Accounting and Business
+</footer>
+
+<script>
+const API_URL = "/compare";
+
+const methods = [
+  ["rules_based", "Rules-Based Search"],
+  ["llm_no_vector", "LLM Without Vector Index"],
+  ["llm_with_vector", "LLM With Vector Index"]
+];
+
+function addText(parent, tag, label, value) {
+  const element = document.createElement(tag);
+  const strong = document.createElement("strong");
+  strong.textContent = label;
+  element.appendChild(strong);
+  element.appendChild(document.createTextNode(String(value)));
+  parent.appendChild(element);
+}
+
+function displayResults(data) {
+  const container = document.getElementById("results");
+  container.replaceChildren();
+
+  for (const [key, title] of methods) {
+    const result = data.results[key] || {};
+    const card = document.createElement("article");
+    card.className = "card";
+
+    const heading = document.createElement("h2");
+    heading.textContent = title;
+    card.appendChild(heading);
+
+    if (result.status !== "success") {
+      const error = document.createElement("p");
+      error.className = "error";
+      error.textContent = "Error: " +
+        (result.error || "Method unavailable");
+      card.appendChild(error);
+    } else {
+      const success = document.createElement("p");
+      success.className = "success";
+      success.textContent = "Completed";
+      card.appendChild(success);
+
+      addText(card, "p", "Answer: ", result.answer);
+      addText(card, "p", "Relevant policy: ", result.policy);
+
+      const time = document.createElement("div");
+      time.className = "metric";
+      time.textContent = "Response time: " +
+        Number(result.response_time).toFixed(4) + " seconds";
+      card.appendChild(time);
+
+      const tokens = document.createElement("div");
+      tokens.className = "metric";
+      tokens.textContent = "Total LLM tokens: " + result.tokens;
+      card.appendChild(tokens);
+
+      if (result.input_tokens !== undefined) {
+        addText(card, "p", "Input tokens: ", result.input_tokens);
+        addText(card, "p", "Output tokens: ", result.output_tokens);
+      }
+
+      if (result.retrieved_policies) {
+        addText(card, "p", "Retrieved policies: ",
+          result.retrieved_policies.join(", "));
+      }
+    }
+
+    container.appendChild(card);
+  }
+}
+
+async function compareMethods() {
+  const question = document.getElementById("question").value.trim();
+  const status = document.getElementById("status");
+  const button = document.getElementById("compareButton");
+
+  if (!question) {
+    status.textContent = "Please enter a question.";
+    return;
+  }
+
+  button.disabled = true;
+  status.textContent = "Running all three methods. Please wait...";
+  document.getElementById("results").replaceChildren();
+
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({question})
+    });
+
+    if (!response.ok) {
+      throw new Error("Server returned HTTP " + response.status);
+    }
+
+    const data = await response.json();
+    displayResults(data);
+    status.textContent = "Comparison completed.";
+  } catch (error) {
+    status.textContent = "Request failed: " + error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+</script>
+
+</body>
+</html>
